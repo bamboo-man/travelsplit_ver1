@@ -13,20 +13,23 @@
   <style>
     *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
     body{background:#0f1923;color:#e8dcc8;font-family:'Georgia','Times New Roman',serif}
-    input,select,button{font-family:inherit}
-    input::placeholder{color:#3a4a5a}
+    input,select,button,textarea{font-family:inherit}
+    input::placeholder,textarea::placeholder{color:#3a4a5a}
     select option{background:#1a2a3a}
     ::-webkit-scrollbar{display:none}
     .grid-bg{position:fixed;inset:0;opacity:.04;pointer-events:none;
       background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,#c8a96e 39px,#c8a96e 40px),
       repeating-linear-gradient(90deg,transparent,transparent 39px,#c8a96e 39px,#c8a96e 40px)}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .fade-in{animation:fadeIn 0.25s ease}
   </style>
 </head>
 <body>
 <div id="root"></div>
 <div class="grid-bg"></div>
 <script type="text/babel">
-const {useState,useEffect,useCallback}=React;
+const {useState,useEffect,useCallback,useRef}=React;
+
 const CURRENCIES=[
   {code:"JPY",symbol:"¥",flag:"🇯🇵"},{code:"USD",symbol:"$",flag:"🇺🇸"},
   {code:"EUR",symbol:"€",flag:"🇪🇺"},{code:"GBP",symbol:"£",flag:"🇬🇧"},
@@ -34,6 +37,9 @@ const CURRENCIES=[
   {code:"TWD",symbol:"NT$",flag:"🇹🇼"},{code:"HKD",symbol:"HK$",flag:"🇭🇰"},
   {code:"PHP",symbol:"₱",flag:"🇵🇭"},{code:"THB",symbol:"฿",flag:"🇹🇭"},
 ];
+
+const TRIP_EMOJIS=["✈️","🗾","🏖️","🏔️","🌏","🚢","🎌","🏝️","🌴","🎡","🍜","🍣"];
+
 const TABS=["👥 メンバー","💳 支払い","🧮 精算"];
 const gid=()=>Math.random().toString(36).slice(2,9);
 
@@ -80,65 +86,167 @@ function ST({icon,title,small}){return(
 function Lbl({children}){return <div style={{fontSize:11,color:"#8a9bb0",letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>{children}</div>;}
 function ES({text}){return <div style={{textAlign:"center",color:"#3a4a5a",padding:"40px 0",fontSize:14}}>— {text} —</div>;}
 
-function App(){
+// ===== TRIP LIST SCREEN =====
+function TripList({trips,onSelect,onCreate,onDelete}){
+  const[name,setName]=useState("");
+  const[emoji,setEmoji]=useState("✈️");
+  const[showForm,setShowForm]=useState(false);
+
+  const handleCreate=()=>{
+    if(!name.trim())return;
+    onCreate({id:gid(),name:name.trim(),emoji,members:[],expenses:[],createdAt:Date.now()});
+    setName("");setEmoji("✈️");setShowForm(false);
+  };
+
+  return(
+    <div className="fade-in">
+      <ST icon="✈️" title="旅行プロジェクト"/>
+
+      {!showForm&&(
+        <button onClick={()=>setShowForm(true)} style={{...BP,width:"100%",padding:"14px 0",fontSize:14,marginBottom:20}}>
+          ＋ 新しい旅行を追加
+        </button>
+      )}
+
+      {showForm&&(
+        <div style={{...CS,marginBottom:20}}>
+          <Lbl>旅行名</Lbl>
+          <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleCreate()}
+            placeholder="例: 台湾旅行、四国旅行..." style={{...IS,marginBottom:12}} autoFocus/>
+          <Lbl>アイコン</Lbl>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+            {TRIP_EMOJIS.map(em=>(
+              <button key={em} onClick={()=>setEmoji(em)} style={{
+                width:40,height:40,borderRadius:8,border:emoji===em?"2px solid #c8a96e":"1px solid #2a3a4a",
+                background:emoji===em?"#1a2a1a":"#0c1620",fontSize:20,cursor:"pointer"
+              }}>{em}</button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={handleCreate} style={{...BP,flex:1,padding:"12px 0"}}>作成</button>
+            <button onClick={()=>setShowForm(false)} style={{...BD,flex:1,padding:"12px 0",fontSize:13}}>キャンセル</button>
+          </div>
+        </div>
+      )}
+
+      {trips.length===0&&!showForm&&<ES text="旅行プロジェクトを追加してください"/>}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {trips.sort((a,b)=>b.createdAt-a.createdAt).map(trip=>{
+          const totalJPY=trip._totalJPY||0;
+          const settled=trip._settled||false;
+          return(
+            <div key={trip.id} onClick={()=>onSelect(trip.id)}
+              style={{...CS,cursor:"pointer",borderColor:settled?"#2a4a2a":"#2a3a4a",position:"relative"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{fontSize:32,width:48,height:48,display:"flex",alignItems:"center",justifyContent:"center",
+                  background:"#0c1620",borderRadius:10,border:"1px solid #2a3a4a",flexShrink:0}}>
+                  {trip.emoji}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:16,fontWeight:"bold",color:"#e8dcc8",marginBottom:2}}>{trip.name}</div>
+                  <div style={{fontSize:12,color:"#8a9bb0"}}>
+                    {trip.members.length}人 · {trip.expenses.length}件の支払い
+                  </div>
+                  {trip.expenses.length>0&&(
+                    <div style={{fontSize:12,color:"#c8a96e",marginTop:2}}>
+                      合計 ¥{Math.round(totalJPY).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                  {settled&&trip.expenses.length>0&&(
+                    <span style={{fontSize:10,color:"#5a9a5a",background:"#1a2a1a",border:"1px solid #3a6a3a",borderRadius:10,padding:"2px 8px"}}>精算済み</span>
+                  )}
+                  {!settled&&trip.expenses.length>0&&(
+                    <span style={{fontSize:10,color:"#9a6a3a",background:"#2a1a0a",border:"1px solid #6a4a2a",borderRadius:10,padding:"2px 8px"}}>未精算</span>
+                  )}
+                  <span style={{color:"#3a4a5a",fontSize:18}}>›</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ===== TRIP DETAIL SCREEN =====
+function TripDetail({trip,rates,rateTime,rateLoading,onBack,onUpdate,onRefreshRates}){
   const[tab,setTab]=useState(0);
-  const[members,setMembers]=useState([{id:"m1",name:"あなた"}]);
-  const[nm,setNm]=useState("");
-  const[expenses,setExpenses]=useState([]);
-  const[rates,setRates]=useState({});
-  const[rateTime,setRateTime]=useState(null);
-  const[rateLoading,setRL]=useState(false);
-  const[form,setForm]=useState({payerId:"m1",recipients:["m1"],amount:"",currency:"JPY",description:""});
+  const[newMemberName,setNewMemberName]=useState("");
+  const[form,setForm]=useState({
+    payerId:trip.members[0]?.id||"",
+    recipients:trip.members.map(m=>m.id),
+    amount:"",currency:"JPY",description:""
+  });
 
-  const fetchRates=useCallback(async()=>{
-    setRL(true);
-    try{
-      const res=await fetch("https://open.er-api.com/v6/latest/JPY");
-      const data=await res.json();
-      if(data.rates){setRates(data.rates);setRateTime(new Date().toLocaleTimeString("ja-JP"));}
-    }catch{
-      setRates({USD:0.0067,EUR:0.0062,GBP:0.0053,CNY:0.048,KRW:8.9,TWD:0.22,HKD:0.052,PHP:0.39,THB:0.24,JPY:1});
-      setRateTime("オフライン(概算値)");
-    }finally{setRL(false);}
-  },[]);
+  useEffect(()=>{
+    setForm(f=>({
+      ...f,
+      payerId:f.payerId||(trip.members[0]?.id||""),
+      recipients:f.recipients.length>0?f.recipients:trip.members.map(m=>m.id)
+    }));
+  },[trip.members]);
 
-  useEffect(()=>{fetchRates();},[]);
+  const update=(patch)=>onUpdate({...trip,...patch});
 
-  const addMem=()=>{
-    if(!nm.trim())return;
-    const m={id:gid(),name:nm.trim()};
-    setMembers(p=>[...p,m]);setNm("");
-    setForm(f=>({...f,recipients:[...f.recipients,m.id]}));
+  const addMember=()=>{
+    if(!newMemberName.trim())return;
+    const m={id:gid(),name:newMemberName.trim()};
+    const members=[...trip.members,m];
+    update({members});
+    setNewMemberName("");
+    setForm(f=>({...f,
+      payerId:f.payerId||m.id,
+      recipients:[...f.recipients,m.id]
+    }));
   };
-  const remMem=id=>{
-    const r=members.filter(m=>m.id!==id);
-    setMembers(r);
-    setExpenses(p=>p.filter(e=>e.payerId!==id&&!e.recipients.includes(id)));
-    setForm(f=>({...f,payerId:f.payerId===id?(r[0]?.id||""):f.payerId,recipients:f.recipients.filter(r=>r!==id)}));
+
+  const remMember=id=>{
+    const members=trip.members.filter(m=>m.id!==id);
+    const expenses=trip.expenses.filter(e=>e.payerId!==id&&!e.recipients.includes(id));
+    update({members,expenses});
+    setForm(f=>({...f,
+      payerId:f.payerId===id?(members[0]?.id||""):f.payerId,
+      recipients:f.recipients.filter(r=>r!==id)
+    }));
   };
-  const togRec=id=>setForm(f=>({...f,recipients:f.recipients.includes(id)?f.recipients.filter(r=>r!==id):[...f.recipients,id]}));
-  const addExp=()=>{
+
+  const togRec=id=>setForm(f=>({...f,
+    recipients:f.recipients.includes(id)?f.recipients.filter(r=>r!==id):[...f.recipients,id]
+  }));
+
+  const addExpense=()=>{
     if(!form.payerId||!form.amount||form.recipients.length===0)return;
-    setExpenses(p=>[...p,{id:gid(),...form,amount:parseFloat(form.amount)}]);
-    setForm(f=>({...f,amount:"",description:""}));setTab(2);
+    const expenses=[...trip.expenses,{id:gid(),...form,amount:parseFloat(form.amount)}];
+    update({expenses});
+    setForm(f=>({...f,amount:"",description:""}));
+    setTab(2);
   };
-  const gname=id=>members.find(m=>m.id===id)?.name||"?";
+
+  const gname=id=>trip.members.find(m=>m.id===id)?.name||"?";
   const gci=code=>CURRENCIES.find(c=>c.code===code)||CURRENCIES[0];
   const tojpy=(amt,cur)=>cur==="JPY"?amt:rates[cur]?amt/rates[cur]:amt;
-  const{bal,tx}=calcSettlements(members,expenses,rates);
-  const total=expenses.reduce((s,e)=>s+tojpy(e.amount,e.currency),0);
+
+  const{bal,tx}=calcSettlements(trip.members,trip.expenses,rates);
+  const total=trip.expenses.reduce((s,e)=>s+tojpy(e.amount,e.currency),0);
 
   return(
     <div style={{minHeight:"100vh",paddingBottom:40}}>
-      <div style={{background:"linear-gradient(135deg,#1a2a3a,#0f1923)",borderBottom:"2px solid #c8a96e",position:"sticky",top:0,zIndex:100,paddingTop:"env(safe-area-inset-top,0px)"}}>
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,#1a2a3a,#0f1923)",borderBottom:"2px solid #c8a96e",
+        position:"sticky",top:0,zIndex:100,paddingTop:"env(safe-area-inset-top,0px)"}}>
         <div style={{maxWidth:480,margin:"0 auto",padding:"12px 16px 0"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-            <span style={{fontSize:24}}>✈️</span>
-            <div>
-              <div style={{fontSize:20,fontWeight:"bold",color:"#c8a96e",letterSpacing:2}}>TravelSplit</div>
-              <div style={{fontSize:10,color:"#8a9bb0",letterSpacing:3}}>旅の割り勘アプリ</div>
+            <button onClick={onBack} style={{background:"none",border:"none",color:"#c8a96e",fontSize:22,cursor:"pointer",padding:"0 4px 0 0",lineHeight:1}}>‹</button>
+            <span style={{fontSize:22}}>{trip.emoji}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:17,fontWeight:"bold",color:"#c8a96e",letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{trip.name}</div>
+              <div style={{fontSize:9,color:"#8a9bb0",letterSpacing:3}}>TravelSplit</div>
             </div>
-            <div style={{marginLeft:"auto",textAlign:"right"}}>
+            <div style={{textAlign:"right",flexShrink:0}}>
               {rateLoading?<div style={{fontSize:10,color:"#8a9bb0"}}>📡 取得中...</div>:
                 <><div style={{fontSize:10,color:"#5a7a5a"}}>🟢 為替取得済み</div><div style={{fontSize:9,color:"#4a6a4a"}}>{rateTime}</div></>}
             </div>
@@ -154,51 +262,64 @@ function App(){
       </div>
 
       <div style={{maxWidth:480,margin:"0 auto",padding:"20px 16px"}}>
+
+        {/* TAB 0: MEMBERS */}
         {tab===0&&(
-          <div>
-            <ST icon="👥" title="旅のメンバー"/>
+          <div className="fade-in">
+            <ST icon="👥" title="メンバー"/>
             <div style={{marginBottom:16,display:"flex",gap:8}}>
-              <input value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addMem()} placeholder="名前を入力..." style={IS}/>
-              <button onClick={addMem} style={{...BP,whiteSpace:"nowrap"}}>追加</button>
+              <input value={newMemberName} onChange={e=>setNewMemberName(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addMember()} placeholder="名前を入力..." style={IS}/>
+              <button onClick={addMember} style={{...BP,whiteSpace:"nowrap"}}>追加</button>
             </div>
-            {members.length===0&&<ES text="メンバーを追加してください"/>}
+            {trip.members.length===0&&<ES text="メンバーを追加してください"/>}
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {members.map((m,i)=>(
+              {trip.members.map((m,i)=>(
                 <div key={m.id} style={CS}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <div style={{width:38,height:38,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
                       background:`hsl(${i*47%360},40%,25%)`,border:`2px solid hsl(${i*47%360},50%,45%)`,
                       fontSize:15,fontWeight:"bold",color:`hsl(${i*47%360},60%,80%)`}}>{m.name[0]}</div>
                     <span style={{flex:1,fontSize:16}}>{m.name}</span>
-                    {members.length>1&&<button onClick={()=>remMem(m.id)} style={BD}>削除</button>}
+                    {trip.members.length>1&&<button onClick={()=>remMember(m.id)} style={BD}>削除</button>}
                   </div>
                 </div>
               ))}
             </div>
-            {members.length>=2&&<button onClick={()=>setTab(1)} style={{...BP,width:"100%",marginTop:20,padding:"16px 0",fontSize:15}}>支払いを追加する →</button>}
+            {trip.members.length>=2&&(
+              <button onClick={()=>setTab(1)} style={{...BP,width:"100%",marginTop:20,padding:"16px 0",fontSize:15}}>
+                支払いを追加する →
+              </button>
+            )}
           </div>
         )}
 
+        {/* TAB 1: ADD EXPENSE */}
         {tab===1&&(
-          <div>
+          <div className="fade-in">
             <ST icon="💳" title="支払いを追加"/>
-            {members.length<2&&<ES text="先にメンバーを2人以上追加してください"/>}
-            {members.length>=2&&(
+            {trip.members.length<2&&<ES text="先にメンバーを2人以上追加してください"/>}
+            {trip.members.length>=2&&(
               <div style={{display:"flex",flexDirection:"column",gap:14}}>
                 <div style={CS}>
                   <Lbl>説明（任意）</Lbl>
-                  <input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="例: ランチ代、ホテル代..." style={IS}/>
+                  <input value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}
+                    placeholder="例: ランチ代、ホテル代..." style={IS}/>
                 </div>
                 <div style={CS}>
                   <Lbl>支払った人</Lbl>
                   <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
-                    {members.map((m,i)=><button key={m.id} onClick={()=>setForm(f=>({...f,payerId:m.id}))} style={form.payerId===m.id?CA(i):CI}>{m.name}</button>)}
+                    {trip.members.map((m,i)=>(
+                      <button key={m.id} onClick={()=>setForm(f=>({...f,payerId:m.id}))}
+                        style={form.payerId===m.id?CA(i):CI}>{m.name}</button>
+                    ))}
                   </div>
                 </div>
                 <div style={CS}>
                   <Lbl>金額と通貨</Lbl>
                   <div style={{display:"flex",gap:8,marginTop:8}}>
-                    <input type="number" inputMode="decimal" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))}
+                    <input type="number" inputMode="decimal" value={form.amount}
+                      onChange={e=>setForm(f=>({...f,amount:e.target.value}))}
                       placeholder="0" style={{...IS,flex:2,fontSize:24,fontWeight:"bold",textAlign:"right"}}/>
                     <select value={form.currency} onChange={e=>setForm(f=>({...f,currency:e.target.value}))}
                       style={{...IS,flex:1.2,fontSize:13,padding:"10px 6px"}}>
@@ -212,15 +333,20 @@ function App(){
                   )}
                 </div>
                 <div style={CS}>
-                  <Lbl>割り勘する人（複数選択可）</Lbl>
+                  <Lbl>割り勘する人</Lbl>
                   <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:8}}>
-                    {members.map((m,i)=><button key={m.id} onClick={()=>togRec(m.id)} style={form.recipients.includes(m.id)?CA(i):CI}>{m.name}</button>)}
+                    {trip.members.map((m,i)=>(
+                      <button key={m.id} onClick={()=>togRec(m.id)}
+                        style={form.recipients.includes(m.id)?CA(i):CI}>{m.name}</button>
+                    ))}
                   </div>
-                  <button onClick={()=>setForm(f=>({...f,recipients:members.map(m=>m.id)}))}
+                  <button onClick={()=>setForm(f=>({...f,recipients:trip.members.map(m=>m.id)}))}
                     style={{marginTop:10,background:"none",border:"none",color:"#8a9bb0",fontSize:12,cursor:"pointer",padding:0}}>全員選択</button>
                 </div>
-                <button onClick={addExp} disabled={!form.payerId||!form.amount||form.recipients.length===0}
-                  style={{...BP,width:"100%",padding:"18px 0",fontSize:16,opacity:(!form.payerId||!form.amount||form.recipients.length===0)?0.4:1}}>
+                <button onClick={addExpense}
+                  disabled={!form.payerId||!form.amount||form.recipients.length===0}
+                  style={{...BP,width:"100%",padding:"18px 0",fontSize:16,
+                    opacity:(!form.payerId||!form.amount||form.recipients.length===0)?0.4:1}}>
                   支払いを追加 ✓
                 </button>
               </div>
@@ -228,11 +354,12 @@ function App(){
           </div>
         )}
 
+        {/* TAB 2: SETTLEMENT */}
         {tab===2&&(
-          <div>
+          <div className="fade-in">
             <ST icon="🧮" title="精算結果"/>
-            {expenses.length===0&&<ES text="支払いをまだ追加していません"/>}
-            {expenses.length>0&&(
+            {trip.expenses.length===0&&<ES text="支払いをまだ追加していません"/>}
+            {trip.expenses.length>0&&(
               <>
                 <div style={{...CS,background:"linear-gradient(135deg,#1a2a1a,#152515)",borderColor:"#3a6a3a",marginBottom:20}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -242,20 +369,21 @@ function App(){
                     </div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontSize:11,color:"#5a9a5a",letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>1人あたり</div>
-                      <div style={{fontSize:22,color:"#7ac87a"}}>¥{members.length>0?Math.round(total/members.length).toLocaleString():0}</div>
+                      <div style={{fontSize:22,color:"#7ac87a"}}>¥{trip.members.length>0?Math.round(total/trip.members.length).toLocaleString():0}</div>
                     </div>
                   </div>
                 </div>
 
                 <ST icon="⚖️" title="各自の収支" small/>
                 <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
-                  {members.map((m,i)=>{
+                  {trip.members.map((m,i)=>{
                     const b=Math.round(bal[m.id]||0);
                     return(
                       <div key={m.id} style={CS}>
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                           <div style={{width:32,height:32,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
-                            background:`hsl(${i*47%360},40%,25%)`,fontSize:12,fontWeight:"bold",color:`hsl(${i*47%360},60%,80%)`}}>{m.name[0]}</div>
+                            background:`hsl(${i*47%360},40%,25%)`,fontSize:12,fontWeight:"bold",
+                            color:`hsl(${i*47%360},60%,80%)`}}>{m.name[0]}</div>
                           <span style={{flex:1}}>{m.name}</span>
                           <span style={{fontSize:16,fontWeight:"bold",color:b>0?"#7ac87a":b<0?"#e07070":"#8a9bb0"}}>
                             {b>0?"+":""}{b.toLocaleString()}円
@@ -291,7 +419,7 @@ function App(){
                     <button onClick={()=>setTab(1)} style={{...BP,padding:"6px 14px",fontSize:12}}>+ 追加</button>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    {expenses.map(e=>{
+                    {trip.expenses.map(e=>{
                       const ci=gci(e.currency);
                       return(
                         <div key={e.id} style={{...CS,padding:"10px 14px"}}>
@@ -305,15 +433,16 @@ function App(){
                               {e.currency!=="JPY"&&<div style={{fontSize:10,color:"#5a6a8a"}}>¥{Math.round(tojpy(e.amount,e.currency)).toLocaleString()}</div>}
                             </div>
                           </div>
-                          <button onClick={()=>setExpenses(p=>p.filter(x=>x.id!==e.id))}
+                          <button onClick={()=>update({expenses:trip.expenses.filter(x=>x.id!==e.id)})}
                             style={{marginTop:6,background:"none",border:"none",color:"#5a4a4a",fontSize:11,cursor:"pointer",padding:0}}>削除</button>
                         </div>
                       );
                     })}
                   </div>
                 </div>
+
                 <div style={{marginTop:16,textAlign:"center"}}>
-                  <button onClick={fetchRates} style={{background:"none",border:"1px solid #3a4a5a",borderRadius:6,color:"#8a9bb0",fontSize:11,padding:"8px 16px",cursor:"pointer"}}>
+                  <button onClick={onRefreshRates} style={{background:"none",border:"1px solid #3a4a5a",borderRadius:6,color:"#8a9bb0",fontSize:11,padding:"8px 16px",cursor:"pointer"}}>
                     🔄 為替レートを更新
                   </button>
                 </div>
@@ -321,6 +450,93 @@ function App(){
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ===== MAIN APP =====
+function App(){
+  const[trips,setTrips]=useState(()=>{
+    try{const s=localStorage.getItem("travelsplit_trips");return s?JSON.parse(s):[];}catch{return[];}
+  });
+  const[selectedId,setSelectedId]=useState(null);
+  const[rates,setRates]=useState({});
+  const[rateTime,setRateTime]=useState(null);
+  const[rateLoading,setRL]=useState(false);
+
+  useEffect(()=>{
+    try{localStorage.setItem("travelsplit_trips",JSON.stringify(trips));}catch{}
+  },[trips]);
+
+  const fetchRates=useCallback(async()=>{
+    setRL(true);
+    try{
+      const res=await fetch("https://open.er-api.com/v6/latest/JPY");
+      const data=await res.json();
+      if(data.rates){setRates(data.rates);setRateTime(new Date().toLocaleTimeString("ja-JP"));}
+    }catch{
+      setRates({USD:0.0067,EUR:0.0062,GBP:0.0053,CNY:0.048,KRW:8.9,TWD:0.22,HKD:0.052,PHP:0.39,THB:0.24,JPY:1});
+      setRateTime("オフライン(概算値)");
+    }finally{setRL(false);}
+  },[]);
+
+  useEffect(()=>{fetchRates();},[]);
+
+  const tojpy=(amt,cur)=>cur==="JPY"?amt:rates[cur]?amt/rates[cur]:amt;
+
+  const tripsWithMeta=trips.map(trip=>{
+    const total=trip.expenses.reduce((s,e)=>s+tojpy(e.amount,e.currency),0);
+    const{tx}=calcSettlements(trip.members,trip.expenses,rates);
+    return{...trip,_totalJPY:total,_settled:tx.length===0};
+  });
+
+  const selectedTrip=tripsWithMeta.find(t=>t.id===selectedId);
+
+  const handleCreate=(trip)=>setTrips(p=>[...p,trip]);
+  const handleUpdate=(updated)=>setTrips(p=>p.map(t=>t.id===updated.id?updated:t));
+  const handleDelete=(id)=>{setTrips(p=>p.filter(t=>t.id!==id));if(selectedId===id)setSelectedId(null);};
+
+  if(selectedTrip){
+    return(
+      <TripDetail
+        trip={selectedTrip}
+        rates={rates}
+        rateTime={rateTime}
+        rateLoading={rateLoading}
+        onBack={()=>setSelectedId(null)}
+        onUpdate={handleUpdate}
+        onRefreshRates={fetchRates}
+      />
+    );
+  }
+
+  return(
+    <div style={{minHeight:"100vh",paddingBottom:40}}>
+      <div style={{background:"linear-gradient(135deg,#1a2a3a,#0f1923)",borderBottom:"2px solid #c8a96e",
+        paddingTop:"env(safe-area-inset-top,0px)",position:"sticky",top:0,zIndex:100}}>
+        <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:26}}>✈️</span>
+            <div>
+              <div style={{fontSize:22,fontWeight:"bold",color:"#c8a96e",letterSpacing:2}}>TravelSplit</div>
+              <div style={{fontSize:10,color:"#8a9bb0",letterSpacing:3}}>旅の割り勘アプリ</div>
+            </div>
+            <div style={{marginLeft:"auto",textAlign:"right"}}>
+              {rateLoading?<div style={{fontSize:10,color:"#8a9bb0"}}>📡 取得中...</div>:
+                <><div style={{fontSize:10,color:"#5a7a5a"}}>🟢 為替取得済み</div><div style={{fontSize:9,color:"#4a6a4a"}}>{rateTime}</div></>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{maxWidth:480,margin:"0 auto",padding:"24px 16px"}}>
+        <TripList
+          trips={tripsWithMeta}
+          onSelect={setSelectedId}
+          onCreate={handleCreate}
+          onDelete={handleDelete}
+        />
       </div>
     </div>
   );
