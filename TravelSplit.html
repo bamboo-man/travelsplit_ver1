@@ -52,8 +52,12 @@ let _db=null;
 function getDb(){return _db;}
 function initFirebase(cfg){
   try{
-    if(firebase.apps.length>0)firebase.apps[0].delete();
-    const app=firebase.initializeApp(cfg);
+    let app;
+    if(firebase.apps.length>0){
+      app=firebase.apps[0];
+    }else{
+      app=firebase.initializeApp(cfg);
+    }
     _db=firebase.database(app);
     return true;
   }catch(e){console.error(e);return false;}
@@ -113,17 +117,16 @@ function SetupScreen({onDone}){
 
   const handleTest=async()=>{
     if(!cfg.apiKey||!cfg.databaseURL||!cfg.projectId){setErr("すべての項目を入力してください");return;}
+    if(!cfg.databaseURL.startsWith("https://")||!cfg.databaseURL.includes("firebaseio.com")){
+      setErr("databaseURLは https://xxxxx.firebaseio.com の形式で入力してください");return;
+    }
     setTesting(true);setErr("");
     const ok=initFirebase(cfg);
     if(!ok){setErr("設定が正しくありません。もう一度確認してください。");setTesting(false);return;}
-    try{
-      await getDb().ref(".info/connected").get();
-      localStorage.setItem("travelsplit_firebase",JSON.stringify(cfg));
-      onDone();
-    }catch(e){
-      setErr("接続できませんでした。databaseURLを確認してください。");
-    }
+    // Just save and proceed — actual connection verified on first data load
+    localStorage.setItem("travelsplit_firebase",JSON.stringify(cfg));
     setTesting(false);
+    onDone();
   };
 
   if(step===0) return(
